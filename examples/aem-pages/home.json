@@ -1,0 +1,74 @@
+{
+  "jcr:primaryType": "cq:Page",
+  "jcr:content": {
+    "jcr:primaryType": "cq:PageContent",
+    "jcr:title": "Home Page",
+    "cq:template": "/conf/mysite/settings/wcm/templates/page-landing",
+    "cq:path": "/content/mysite/en/home",
+    "jcr:language": "en",
+    "jcr:description": "Welcome to our website",
+    "cq:tags": ["mysite:category/home", "mysite:topic/banking"],
+    "cq:lastModified": "2024-01-15T10:30:00.000Z",
+    "jcr:created": "2023-06-01T09:00:00.000Z",
+    
+    "root": {
+      "jcr:primaryType": "nt:unstructured",
+      "sling:resourceType": "mysite/components/container",
+      
+      "hero": {
+        "jcr:primaryType": "nt:unstructured",
+        "sling:resourceType": "mysite/components/hero-banner",
+        "title": "Welcome to HSBC",
+        "subtitle": "Your trusted banking partner for over 150 years",
+        "backgroundImage": "/content/dam/mysite/images/hero-home.jpg",
+        "ctaText": "Open an Account",
+        "ctaLink": "/content/mysite/en/personal/accounts",
+        "openInNewWindow": false,
+        "variant": "dark"
+      },
+      
+      "section1": {
+        "jcr:primaryType": "nt:unstructured",
+        "sling:resourceType": "mysite/components/container",
+        "layout": "grid-3",
+        
+        "card1": {
+          "jcr:primaryType": "nt:unstructured",
+          "sling:resourceType": "mysite/components/card",
+          "title": "Personal Banking",
+          "description": "Manage your everyday banking needs",
+          "image": "/content/dam/mysite/images/personal-banking.jpg",
+          "link": "/content/mysite/en/personal"
+        },
+        
+        "card2": {
+          "jcr:primaryType": "nt:unstructured",
+          "sling:resourceType": "mysite/components/card",
+          "title": "Business Banking",
+          "description": "Solutions for your business growth",
+          "image": "/content/dam/mysite/images/business-banking.jpg",
+          "link": "/content/mysite/en/business"
+        },
+        
+        "card3": {
+          "jcr:primaryType": "nt:unstructured",
+          "sling:resourceType": "mysite/components/card",
+          "title": "Wealth Management",
+          "description": "Plan for your financial future",
+          "image": "/content/dam/mysite/images/wealth.jpg",
+          "link": "/content/mysite/en/wealth"
+        }
+      },
+      
+      "cta-section": {
+        "jcr:primaryType": "nt:unstructured",
+        "sling:resourceType": "mysite/components/hero-banner",
+        "title": "Ready to get started?",
+        "subtitle": "Join millions of customers who trust us with their finances",
+        "ctaText": "Contact Us",
+        "ctaLink": "/content/mysite/en/contact",
+        "variant": "default"
+      }
+    }
+  }
+}

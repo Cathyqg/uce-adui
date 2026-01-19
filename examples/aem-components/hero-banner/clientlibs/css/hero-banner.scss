@@ -1,0 +1,102 @@
+.hero-banner {
+    position: relative;
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-size: cover;
+    background-position: center;
+    color: #ffffff;
+    
+    &__overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 1;
+    }
+    
+    &__content {
+        position: relative;
+        z-index: 2;
+        text-align: center;
+        max-width: 800px;
+        padding: 2rem;
+    }
+    
+    &__title {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        line-height: 1.2;
+        
+        @media (max-width: 768px) {
+            font-size: 2rem;
+        }
+    }
+    
+    &__subtitle {
+        font-size: 1.25rem;
+        margin-bottom: 2rem;
+        opacity: 0.9;
+        
+        @media (max-width: 768px) {
+            font-size: 1rem;
+        }
+    }
+    
+    &__cta {
+        .btn {
+            display: inline-block;
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            
+            &--primary {
+                background-color: #db0011;
+                color: #ffffff;
+                border: 2px solid #db0011;
+                
+                &:hover {
+                    background-color: #c4000f;
+                    border-color: #c4000f;
+                }
+            }
+            
+            &--large {
+                padding: 1.25rem 2.5rem;
+                font-size: 1.125rem;
+            }
+        }
+    }
+    
+    // Variants
+    &--dark {
+        .hero-banner__overlay {
+            background: rgba(0, 0, 0, 0.6);
+        }
+    }
+    
+    &--light {
+        .hero-banner__overlay {
+            background: rgba(255, 255, 255, 0.7);
+        }
+        
+        .hero-banner__content {
+            color: #333333;
+        }
+    }
+    
+    &--no-image {
+        background: linear-gradient(135deg, #db0011 0%, #9a000c 100%);
+        
+        .hero-banner__overlay {
+            display: none;
+        }
+    }
+}

@@ -1,0 +1,37 @@
+<sly data-sly-use.model="com.mysite.core.models.HeroBanner">
+    <section class="hero-banner hero-banner--${model.variant @ context='attribute'}"
+             data-sly-test="${model.backgroundImage}"
+             style="background-image: url('${model.backgroundImage @ context='uri'}');">
+        
+        <div class="hero-banner__overlay"></div>
+        
+        <div class="hero-banner__content">
+            <h1 class="hero-banner__title" data-sly-test="${model.title}">
+                ${model.title @ context='html'}
+            </h1>
+            
+            <p class="hero-banner__subtitle" data-sly-test="${model.subtitle}">
+                ${model.subtitle @ context='html'}
+            </p>
+            
+            <div class="hero-banner__cta" data-sly-test="${model.ctaLink && model.ctaText}">
+                <a href="${model.ctaLink @ context='uri'}" 
+                   class="btn btn--primary btn--large"
+                   target="${model.openInNewWindow ? '_blank' : '_self'}"
+                   data-sly-attribute.rel="${model.openInNewWindow ? 'noopener noreferrer' : ''}">
+                    ${model.ctaText @ context='text'}
+                </a>
+            </div>
+        </div>
+        
+    </section>
+    
+    <sly data-sly-test="${!model.backgroundImage}">
+        <section class="hero-banner hero-banner--no-image">
+            <div class="hero-banner__content">
+                <h1 class="hero-banner__title">${model.title @ context='html'}</h1>
+                <p class="hero-banner__subtitle">${model.subtitle @ context='html'}</p>
+            </div>
+        </section>
+    </sly>
+</sly>
