@@ -164,6 +164,30 @@ def create_code_generator_agent(llm=None):
     )
 
 
+def create_code_fixer_agent(llm=None):
+    """
+    创建代码修复 Agent
+    
+    功能: 针对已生成代码进行小范围修复
+    工具: validate_typescript_syntax, lint_react_code, format_with_prettier
+    """
+    llm = llm or get_llm(task="generation", temperature=0)
+    
+    tools = [
+        validate_typescript_syntax,
+        lint_react_code,
+        format_with_prettier,
+    ]
+    
+    system_prompt = PromptTemplates.CODE_FIXER
+    
+    return create_structured_agent(
+        llm, tools,
+        system_prompt=system_prompt,
+        response_format=CodeGeneratorOutput,
+    )
+
+
 def create_code_reviewer_agent(llm=None):
     """
     创建代码审查 Agent

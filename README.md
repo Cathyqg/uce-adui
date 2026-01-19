@@ -12,7 +12,7 @@
 
 ## 🎯 核心特性
 
-- ✅ **混合架构**: 87% Pipeline（快速确定性）+ 13% Agent（智能决策）
+- ✅ **混合架构**: Pipeline 为主，Agent 用于映射/生成/审查/修复
 - ✅ **LangGraph 1.0+**: 完全符合最新 API 和最佳实践
 - ✅ **类型安全**: 完整的 Pydantic 模型和类型标注
 - ✅ **企业级设计模式**: 工厂、策略、中间件、单例
@@ -40,6 +40,7 @@ src/
 │       ├── bdl_mapping.py             # BDL 组件映射
 │       ├── code_generation.py         # React 代码生成
 │       ├── code_review.py             # 代码质量审查
+│       ├── code_fix.py                # 自动修复
 │       └── editor_design.py           # 编辑器界面设计
 │
 ├── agents/                     # 【Agent 基础设施】
@@ -135,8 +136,8 @@ python -m src.main path/to/aem-components \
 │    Application Layer               │  FastAPI Server、CLI
 ├────────────────────────────────────┤
 │    Business Logic (nodes/)         │  所有节点
-│    ├─ pipeline/    (确定性)        │  ← 87% 代码
-│    └─ intelligent/ (智能)          │  ← 13% 代码
+│    ├─ pipeline/    (确定性)        │  主路径
+│    └─ intelligent/ (智能)          │  关键决策/修复
 ├────────────────────────────────────┤
 │    Agent Infrastructure (agents/)  │  Agent 工具库
 ├────────────────────────────────────┤
@@ -156,7 +157,7 @@ python -m src.main path/to/aem-components \
 #### intelligent/ - Intelligent 节点  
 - **特点**: ReAct Agent 循环，使用工具，智能决策
 - **适用**: 需要搜索、验证、迭代的任务
-- **示例**: `bdl_mapping_node()`, `code_generation_node()`, `code_review_node()`
+- **示例**: `bdl_mapping_node()`, `code_generation_node()`, `code_review_node()`, `code_fix_node()`
 
 ### agents/ - Agent 基础设施
 
@@ -308,9 +309,13 @@ from langgraph.constants import Send
 
 def route_to_parallel_reviews(state):
     return [
-        Send("code_quality", state),
-        Send("bdl_compliance", state),
-        Send("function_parity", state),
+        Send("code_quality_review", state),
+        Send("bdl_compliance_review", state),
+        Send("function_parity_review", state),
+        Send("accessibility_review", state),
+        Send("security_review", state),
+        Send("editor_schema_review", state),
+        Send("runtime_check_review", state),
     ]
 ```
 
@@ -359,7 +364,7 @@ langgraph-checkpoint>=2.0.0
 | 成本 | 低 | 较高 |
 | 适用 | 确定性任务 | 需要智能决策 |
 
-### 4 个 Intelligent 节点
+### 5 个 Intelligent 节点
 
 1. **BDL Mapping** (`nodes/intelligent/bdl_mapping.py`)
    - 搜索 BDL 组件库
@@ -376,7 +381,12 @@ langgraph-checkpoint>=2.0.0
    - 综合判断质量
    - 提供详细反馈
 
-4. **Editor Design** (`nodes/intelligent/editor_design.py`)
+4. **Code Fix** (`nodes/intelligent/code_fix.py`)
+   - 基于 review issues 自动修复
+   - 保持结构与逻辑一致
+   - 修复后触发复审
+
+5. **Editor Design** (`nodes/intelligent/editor_design.py`)
    - 分析 Props 语义
    - 推理用户需求
    - 设计友好界面
@@ -472,10 +482,15 @@ result = await strategy.invoke(agent, messages)
 └──────┬──────────────────┘
        │
 ┌──────┴──────────────────┐
-│ Review System           │ 审查系统（并行）
+│ Review System           │ 审查系统（并行 + 自动修复）
 │ ├─ code_review ⭐       │ Agent: 代码质量审查
+│ ├─ runtime_check        │ Pipeline: 编译/运行检查
+│ ├─ accessibility        │ Pipeline: 可访问性
+│ ├─ security             │ Pipeline: 安全检查
+│ ├─ editor_schema        │ Pipeline: 配置审查
 │ ├─ bdl_compliance       │ Pipeline: BDL 合规检查
 │ ├─ function_parity      │ Pipeline: 功能一致性
+│ ├─ code_fix ⭐          │ Agent: 自动修复（按需）
 │ └─ [human_review] 🤚   │ Human-in-the-Loop
 └──────┬──────────────────┘
        │
@@ -488,10 +503,50 @@ result = await strategy.invoke(agent, messages)
 └─────────────────────────┘
 ```
 
-⭐ = Intelligent 节点（使用 Agent）  
+⭐ = Intelligent 节点（使用 Agent）
 🤚 = 人工审查中断点
 
 ---
+
+## 🧭 主图与子图
+
+### 主图（Hybrid 默认）
+
+```
+START
+  -> initialize
+  -> load_bdl_spec
+  -> component_conversion (subgraph)
+  -> config_generation (subgraph)
+  -> review_system (subgraph)
+       ├─ regenerate -> component_conversion
+       ├─ continue   -> page_migration (subgraph) -> finalize -> generate_report -> END
+       └─ human_wait -> END (interrupt)
+```
+
+### 子图一览
+
+```
+component_conversion (hybrid):
+  ingest_source -> parse_aem -> analyze_component -> bdl_mapping ⭐
+  -> transform_logic -> code_generation ⭐
+
+config_generation (hybrid):
+  extract_props -> editor_design ⭐ -> generate_schema -> validate_config
+
+review_system:
+  distribute_reviews
+    -> [parallel reviews: code_quality (agent or pipeline), bdl_compliance,
+        function_parity, accessibility, security, editor_schema, runtime_check]
+  -> merge_review_results -> aggregate_reviews
+  -> auto_fix -> code_fix ⭐ -> distribute_reviews
+  -> prepare_human_review -> human_review -> process_human_decision
+  -> auto_approve | handle_rejection | apply_modifications
+
+page_migration:
+  parse_aem_json -> map_page_components -> transform_structure
+  -> generate_cms_json -> validate_page -> loop/complete
+```
 
 ## 📖 开发指南
 
@@ -716,6 +771,41 @@ LLM_CONFIG = {
         "generation": "litellm/default",
         "review": "litellm/default",
     },
+}
+```
+
+### Review configuration
+
+```python
+# Pass via MigrationEngine(config=...)
+{
+    "review": {
+        "skip": False,
+        "enabled": {
+            "code_quality": True,
+            "bdl_compliance": True,
+            "function_parity": True,
+            "accessibility": True,
+            "security": True,
+            "editor_schema": True,
+            "runtime_check": False,
+        },
+        "strategy": {
+            "code_quality": "agent",  # or "pipeline"
+        },
+        "auto_fix": {
+            "enabled": True,
+            "max_attempts": 2,
+            "max_severity": "minor",
+        },
+        "runtime_check": {
+            "enabled": False,
+            "command": "node scripts/runtime_check.js --component {component_path}",
+            "timeout_seconds": 60,
+            "cwd": ".",
+            "shell": True,
+        },
+    }
 }
 ```
 

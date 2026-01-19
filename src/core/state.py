@@ -48,6 +48,7 @@ class ComponentStatus(str, Enum):
     TRANSFORMING = "transforming"
     GENERATING = "generating"
     AUTO_REVIEWING = "auto_reviewing"
+    AUTO_FIXING = "auto_fixing"
     HUMAN_REVIEWING = "human_reviewing"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -639,6 +640,7 @@ class MigrationGraphState(TypedDict, total=False):
     
     # === 审查状态 ===
     pending_human_review: List[str]  # 覆盖型 - 每次重新计算
+    pending_auto_fix: List[str]  # 覆盖型 - 待自动修复组件
     human_review_decisions: Annotated[Dict[str, Dict[str, Any]], merge_dicts]
     
     # === 并行审查结果 (Send API 模式) ===
@@ -693,6 +695,7 @@ def create_initial_state(
         page_queue=[],
         current_page_id=None,
         pending_human_review=[],
+        pending_auto_fix=[],
         human_review_decisions={},
         bdl_spec={},
         component_registry={},

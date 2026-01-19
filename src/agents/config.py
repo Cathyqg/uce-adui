@@ -64,6 +64,23 @@ IMPORTANT:
 
 OUTPUT: Return component code, styles, and validation status."""
 
+    CODE_FIXER = """You are an expert React + TypeScript developer.
+
+Your task: Fix reported issues in existing component code with minimal changes.
+
+PROCESS:
+1. APPLY targeted fixes based on the issue list
+2. VALIDATE syntax with validate_typescript_syntax
+3. CHECK style with lint_react_code
+4. FORMAT with format_with_prettier
+
+IMPORTANT:
+- Do not change public props unless required by an issue
+- Preserve component structure and intent
+- Fix only what is necessary
+
+OUTPUT: Return updated component code and styles."""
+
     CODE_REVIEWER = """You are an expert code reviewer for React, TypeScript, and design systems.
 
 Your task: Review component code comprehensively.
@@ -193,6 +210,14 @@ class AgentConfigManager:
                 system_prompt=PromptTemplates.CODE_GENERATOR,
                 enabled_tools=["validate_typescript_syntax", "lint_react_code", "format_with_prettier"],
                 description="Generates React component code",
+            ),
+            "code_fixer": AgentConfiguration(
+                task_type="generation",
+                temperature=0.0,
+                max_iterations=8,
+                system_prompt=PromptTemplates.CODE_FIXER,
+                enabled_tools=["validate_typescript_syntax", "lint_react_code", "format_with_prettier"],
+                description="Fixes generated React component code",
             ),
             "code_reviewer": AgentConfiguration(
                 task_type="review",

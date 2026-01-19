@@ -30,6 +30,7 @@ class AgentType(str, Enum):
     """支持的 Agent 类型"""
     BDL_MAPPER = "bdl_mapper"
     CODE_GENERATOR = "code_generator"
+    CODE_FIXER = "code_fixer"
     CODE_REVIEWER = "code_reviewer"
     EDITOR_DESIGNER = "editor_designer"
 
@@ -59,6 +60,11 @@ AGENT_CONFIGS = {
         task_type="generation",
         temperature=0.0,  # 确定性输出
         max_iterations=15,  # 生成+验证可能需要更多迭代
+    ),
+    AgentType.CODE_FIXER: AgentConfig(
+        task_type="generation",
+        temperature=0.0,
+        max_iterations=8,
     ),
     AgentType.CODE_REVIEWER: AgentConfig(
         task_type="review",
@@ -151,6 +157,8 @@ class AgentFactory:
             return self._create_bdl_mapper_agent(llm, config)
         elif agent_type == AgentType.CODE_GENERATOR:
             return self._create_code_generator_agent(llm, config)
+        elif agent_type == AgentType.CODE_FIXER:
+            return self._create_code_fixer_agent(llm, config)
         elif agent_type == AgentType.CODE_REVIEWER:
             return self._create_code_reviewer_agent(llm, config)
         elif agent_type == AgentType.EDITOR_DESIGNER:
@@ -169,6 +177,12 @@ class AgentFactory:
         from src.agents.core import create_code_generator_agent
         return create_code_generator_agent(llm=llm)
     
+
+    def _create_code_fixer_agent(self, llm, config: AgentConfig):
+        """Create Code Fixer Agent"""
+        from src.agents.core import create_code_fixer_agent
+        return create_code_fixer_agent(llm=llm)
+
     def _create_code_reviewer_agent(self, llm, config: AgentConfig):
         """创建 Code Reviewer Agent"""
         from src.agents.core import create_code_reviewer_agent

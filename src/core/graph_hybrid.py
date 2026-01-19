@@ -29,7 +29,8 @@ LangGraph 1.0+ Features:
 ================================================================================
 """
 
-from typing import Any, Dict, List, Literal
+import os
+from typing import Any, Dict, List, Literal, Optional
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.constants import Send
@@ -85,29 +86,106 @@ def page_migration_router(state: MigrationGraphState) -> Literal["migrate_next",
     return "migrate_next" if page_queue else "complete"
 
 
+def _review_settings(state: MigrationGraphState) -> Dict[str, Any]:
+    config = state.get("config", {})
+    review = config.get("review", {})
+    return review if isinstance(review, dict) else {}
+
+
+def _review_enabled(state: MigrationGraphState, review_name: str) -> bool:
+    review = _review_settings(state)
+    enabled = review.get("enabled")
+    if isinstance(enabled, dict) and review_name in enabled:
+        return bool(enabled.get(review_name))
+    return True
+
+
+def _runtime_check_enabled(state: MigrationGraphState) -> bool:
+    if not _review_enabled(state, "runtime_check"):
+        return False
+    review = _review_settings(state)
+    runtime_check = review.get("runtime_check", {})
+    if not isinstance(runtime_check, dict):
+        runtime_check = {}
+    command_value = runtime_check.get("command", "")
+    command = str(command_value).strip() if command_value is not None else ""
+    enabled_value = runtime_check.get("enabled")
+    enabled = bool(command) if enabled_value is None else bool(enabled_value)
+    return bool(command) and enabled
+
+
+def _review_strategy(state: MigrationGraphState, review_name: str) -> Optional[str]:
+    review = _review_settings(state)
+    strategy = review.get("strategy")
+    if isinstance(strategy, dict):
+        value = strategy.get(review_name)
+        return str(value).lower() if value else None
+    if isinstance(strategy, str) and review_name == "code_quality":
+        return strategy.lower()
+    return None
+
+
+def _should_skip_review(state: MigrationGraphState) -> bool:
+    config = state.get("config", {})
+    review = _review_settings(state)
+    if review.get("skip") is True:
+        return True
+    if config.get("auto_approve_all"):
+        return True
+    if not any(
+        (_runtime_check_enabled(state) if name == "runtime_check" else _review_enabled(state, name))
+        for name in (
+            "code_quality",
+            "bdl_compliance",
+            "function_parity",
+            "accessibility",
+            "security",
+            "editor_schema",
+            "runtime_check",
+        )
+    ):
+        return True
+    return os.getenv("MIGRATION_SKIP_REVIEW", "").lower() in {"1", "true", "yes"}
+
+
 def route_to_parallel_reviews(state: MigrationGraphState) -> List[Send]:
-    """Send API 路由 - 并行审查"""
+    """Send API ?? - ????"""
+    if _should_skip_review(state):
+        return [Send("merge_review_results", state)]
+
     components = state.get("components", {})
     has_components = any(
         comp_data.get("status") == "generating"
         for comp_data in components.values()
     )
-    
+
     if not has_components:
         return [Send("merge_review_results", state)]
-    
-    # ⭐ 这里可以选择使用 Agent 或 Pipeline 节点
-    # 当前使用 code_reviewer_agent
-    return [
-        Send("code_quality_review_agent", state),  # ⭐ Agent
-        Send("bdl_compliance_review", state),      # Pipeline
-        Send("function_parity_review", state),     # Pipeline
-    ]
 
+    review_nodes: List[str] = []
+    if _review_enabled(state, "code_quality"):
+        strategy = _review_strategy(state, "code_quality")
+        if strategy == "pipeline":
+            review_nodes.append("code_quality_review")
+        else:
+            review_nodes.append("code_quality_review_agent")
+    if _review_enabled(state, "bdl_compliance"):
+        review_nodes.append("bdl_compliance_review")
+    if _review_enabled(state, "function_parity"):
+        review_nodes.append("function_parity_review")
+    if _review_enabled(state, "accessibility"):
+        review_nodes.append("accessibility_review")
+    if _review_enabled(state, "security"):
+        review_nodes.append("security_review")
+    if _review_enabled(state, "editor_schema"):
+        review_nodes.append("editor_schema_review")
+    if _runtime_check_enabled(state):
+        review_nodes.append("runtime_check_review")
 
-# ============================================================================
-# 子图定义 - Component Conversion (混合)
-# ============================================================================
+    if not review_nodes:
+        return [Send("merge_review_results", state)]
+
+    return [Send(node, state) for node in review_nodes]
 
 def create_component_conversion_subgraph_hybrid() -> StateGraph:
     """
@@ -212,8 +290,13 @@ def create_review_subgraph_hybrid() -> StateGraph:
     
     # ⭐ 1 个 Agent + 2 个 Pipeline（混合）
     subgraph.add_node("code_quality_review_agent", code_reviewer_agent_node)  # ⭐ Agent
+    subgraph.add_node("code_quality_review", code_quality_review_node)  # Pipeline
     subgraph.add_node("bdl_compliance_review", bdl_compliance_review_node)    # Pipeline
     subgraph.add_node("function_parity_review", function_parity_review_node)  # Pipeline
+    subgraph.add_node("accessibility_review", accessibility_review_node)  # Pipeline
+    subgraph.add_node("security_review", security_review_node)  # Pipeline
+    subgraph.add_node("editor_schema_review", editor_schema_review_node)  # Pipeline
+    subgraph.add_node("runtime_check_review", runtime_check_review_node)  # Pipeline
     
     subgraph.add_node("merge_review_results", merge_review_results_node)
     subgraph.add_node("aggregate_reviews", aggregate_reviews_node)
@@ -224,6 +307,7 @@ def create_review_subgraph_hybrid() -> StateGraph:
     subgraph.add_node("process_human_decision", process_human_decision_node)
     
     # 后续处理
+    subgraph.add_node("auto_fix", auto_fix_node)
     subgraph.add_node("auto_approve", auto_approve_node)
     subgraph.add_node("handle_rejection", handle_rejection_node)
     subgraph.add_node("apply_modifications", apply_modifications_node)
@@ -234,12 +318,27 @@ def create_review_subgraph_hybrid() -> StateGraph:
     subgraph.add_conditional_edges(
         "distribute_reviews",
         route_to_parallel_reviews,
-        ["code_quality_review_agent", "bdl_compliance_review", "function_parity_review", "merge_review_results"]
+        [
+            "code_quality_review_agent",
+            "code_quality_review",
+            "bdl_compliance_review",
+            "function_parity_review",
+            "accessibility_review",
+            "security_review",
+            "editor_schema_review",
+            "runtime_check_review",
+            "merge_review_results",
+        ]
     )
     
     subgraph.add_edge("code_quality_review_agent", "merge_review_results")
+    subgraph.add_edge("code_quality_review", "merge_review_results")
     subgraph.add_edge("bdl_compliance_review", "merge_review_results")
     subgraph.add_edge("function_parity_review", "merge_review_results")
+    subgraph.add_edge("accessibility_review", "merge_review_results")
+    subgraph.add_edge("security_review", "merge_review_results")
+    subgraph.add_edge("editor_schema_review", "merge_review_results")
+    subgraph.add_edge("runtime_check_review", "merge_review_results")
     
     subgraph.add_edge("merge_review_results", "aggregate_reviews")
     
@@ -248,6 +347,7 @@ def create_review_subgraph_hybrid() -> StateGraph:
         review_decision_router,
         {
             "human_review": "prepare_human_review",
+            "auto_fix": "auto_fix",
             "auto_approve": "auto_approve",
             "regenerate": "handle_rejection"
         }
@@ -267,6 +367,7 @@ def create_review_subgraph_hybrid() -> StateGraph:
         }
     )
     
+    subgraph.add_edge("auto_fix", "distribute_reviews")
     subgraph.add_edge("auto_approve", END)
     subgraph.add_edge("handle_rejection", END)
     subgraph.add_edge("apply_modifications", END)
@@ -283,7 +384,7 @@ def create_main_hybrid_graph() -> StateGraph:
     主图 - 混合架构
     
     ⭐ 新特性:
-    1. 4 个 Agent 节点（智能决策和迭代）
+    1. 5 个 Agent 节点（智能决策和迭代）
     2. 支持循环（Review → Generate）
     3. 反馈机制（节点间通信）
     4. 27 个 Pipeline 节点（确定性流程）
@@ -429,6 +530,32 @@ async def code_reviewer_agent_node(state: MigrationGraphState) -> Dict[str, Any]
     from src.nodes.intelligent.code_review import code_review_node
     return await code_review_node(state)
 
+
+async def code_quality_review_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """Pipeline ????"""
+    from src.nodes.pipeline.review import code_quality_review_v2
+    return await code_quality_review_v2(state)
+
+
+async def accessibility_review_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """Pipeline ????"""
+    from src.nodes.pipeline.review import accessibility_review_v2
+    return await accessibility_review_v2(state)
+
+async def security_review_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """Pipeline ????"""
+    from src.nodes.pipeline.review import security_review_v2
+    return await security_review_v2(state)
+
+async def editor_schema_review_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """Pipeline ????"""
+    from src.nodes.pipeline.review import editor_schema_review_v2
+    return await editor_schema_review_v2(state)
+
+async def runtime_check_review_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """Pipeline ????"""
+    from src.nodes.pipeline.review import runtime_check_review_v2
+    return await runtime_check_review_v2(state)
 async def bdl_compliance_review_node(state: MigrationGraphState) -> Dict[str, Any]:
     """Pipeline 审查节点（或未来也可改为 Agent）"""
     from src.nodes.pipeline.review import bdl_compliance_review_v2
@@ -463,6 +590,12 @@ def auto_approve_node(state: MigrationGraphState) -> Dict[str, Any]:
     from src.nodes.pipeline.review import auto_approve
     return auto_approve(state)
 
+
+async def auto_fix_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """Auto fix"""
+    from src.nodes.intelligent.code_fix import code_fix_node
+    return await code_fix_node(state)
+
 def handle_rejection_node(state: MigrationGraphState) -> Dict[str, Any]:
     from src.nodes.pipeline.review import handle_rejection
     return handle_rejection(state)
@@ -476,10 +609,19 @@ def review_decision_router(state: MigrationGraphState) -> str:
     pending = state.get("pending_human_review", [])
     if pending:
         return "human_review"
+
+    pending_auto_fix = state.get("pending_auto_fix", [])
+    if pending_auto_fix:
+        return "auto_fix"
     
     components = state.get("components", {})
     for comp_data in components.values():
+        if comp_data.get("status") == "rejected":
+            return "regenerate"
         review = comp_data.get("review", {})
+        aggregated = review.get("aggregated", {})
+        if aggregated.get("decision") == "regenerate":
+            return "regenerate"
         if review.get("human_decision") == "reject":
             return "regenerate"
     

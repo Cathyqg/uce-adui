@@ -27,6 +27,7 @@ Agent 基础设施模块
 from src.agents.core import (
     create_bdl_mapping_agent,
     create_code_generator_agent,
+    create_code_fixer_agent,
     create_code_reviewer_agent,
     create_editor_designer_agent,
     # 输出模型
@@ -92,6 +93,7 @@ __all__ = [
     # ========== Agent 创建和模型 ==========
     "create_bdl_mapping_agent",
     "create_code_generator_agent",
+    "create_code_fixer_agent",
     "create_code_reviewer_agent",
     "create_editor_designer_agent",
     "BDLMappingOutput",

@@ -46,11 +46,69 @@ COPILOT_API_KEY=your-copilot-key
 # Optional: offline test
 MIGRATION_USE_MOCK_LLM=1
 
+# Optional: skip all auto reviews
+MIGRATION_SKIP_REVIEW=1
+
 # Optional: LangSmith tracing
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_API_KEY=...
 LANGCHAIN_PROJECT=uce-adui
 ```
+
+### Review configuration (optional)
+
+```python
+engine = MigrationEngine(config={
+    "review": {
+        "skip": False,
+        "enabled": {
+            "code_quality": True,
+            "bdl_compliance": True,
+            "function_parity": True,
+            "accessibility": True,
+            "security": True,
+            "editor_schema": True,
+            "runtime_check": False,
+        },
+        "strategy": {
+            "code_quality": "agent",  # or "pipeline"
+        },
+        "auto_fix": {
+            "enabled": True,
+            "max_attempts": 2,
+            "max_severity": "minor",
+        },
+        "runtime_check": {
+            "enabled": False,
+            "command": "node scripts/runtime_check.js --component {component_path}",
+            "timeout_seconds": 60,
+            "cwd": ".",
+            "shell": True,
+        },
+    }
+})
+```
+
+---
+
+## 🧭 主图与子图（Hybrid 默认）
+
+```
+START
+  -> initialize -> load_bdl_spec
+  -> component_conversion (subgraph)
+  -> config_generation (subgraph)
+  -> review_system (subgraph, interrupt_before=human_review)
+       ├─ regenerate -> component_conversion
+       ├─ continue   -> page_migration (subgraph) -> finalize -> generate_report -> END
+       └─ human_wait -> END (interrupt)
+```
+
+子图概览（简版）：
+- component_conversion: ingest_source -> parse_aem -> analyze_component -> bdl_mapping ⭐ -> transform_logic -> code_generation ⭐
+- config_generation: extract_props -> editor_design ⭐ -> generate_schema -> validate_config
+- review_system: 并行 review -> aggregate -> auto_fix ⭐/human_review/auto_approve/handle_rejection
+- page_migration: parse_aem_json -> map_page_components -> transform_structure -> generate_cms_json -> validate_page
 
 ---
 

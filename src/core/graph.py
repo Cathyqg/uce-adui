@@ -40,16 +40,25 @@ def should_continue_generating(state: MigrationGraphState) -> Literal["generate_
     return "start_config"
 
 
-def review_decision_router(state: MigrationGraphState) -> Literal["human_review", "auto_approve", "regenerate"]:
+def review_decision_router(state: MigrationGraphState) -> Literal["human_review", "auto_fix", "auto_approve", "regenerate"]:
     """根据审查结果决定下一步"""
     pending = state.get("pending_human_review", [])
     if pending:
         return "human_review"
+
+    pending_auto_fix = state.get("pending_auto_fix", [])
+    if pending_auto_fix:
+        return "auto_fix"
     
     # 检查是否有需要重新生成的
     components = state.get("components", {})
     for comp_data in components.values():
+        if comp_data.get("status") == "rejected":
+            return "regenerate"
         review = comp_data.get("review", {})
+        aggregated = review.get("aggregated", {})
+        if aggregated.get("decision") == "regenerate":
+            return "regenerate"
         if review.get("human_decision") == "reject":
             return "regenerate"
     
@@ -196,6 +205,10 @@ def create_review_subgraph() -> StateGraph:
     subgraph.add_node("code_quality_review", code_quality_review_v2_node)
     subgraph.add_node("bdl_compliance_review", bdl_compliance_review_v2_node)
     subgraph.add_node("function_parity_review", function_parity_review_v2_node)
+    subgraph.add_node("accessibility_review", accessibility_review_v2_node)
+    subgraph.add_node("security_review", security_review_v2_node)
+    subgraph.add_node("editor_schema_review", editor_schema_review_v2_node)
+    subgraph.add_node("runtime_check_review", runtime_check_review_v2_node)
     subgraph.add_node("merge_review_results", merge_review_results_node)
     
     # === 聚合与决策节点 ===
@@ -207,6 +220,7 @@ def create_review_subgraph() -> StateGraph:
     subgraph.add_node("process_human_decision", process_human_decision_node)
     
     # === 后续处理节点 ===
+    subgraph.add_node("auto_fix", auto_fix_node)
     subgraph.add_node("auto_approve", auto_approve_node)
     subgraph.add_node("handle_rejection", handle_rejection_node)
     subgraph.add_node("apply_modifications", apply_modifications_node)
@@ -220,13 +234,26 @@ def create_review_subgraph() -> StateGraph:
     subgraph.add_conditional_edges(
         "distribute_reviews",
         route_to_parallel_reviews,  # 返回 [Send("code_quality_review"), Send("bdl_compliance_review"), Send("function_parity_review")]
-        ["code_quality_review", "bdl_compliance_review", "function_parity_review", "merge_review_results"]
+        [
+            "code_quality_review",
+            "bdl_compliance_review",
+            "function_parity_review",
+            "accessibility_review",
+            "security_review",
+            "editor_schema_review",
+            "runtime_check_review",
+            "merge_review_results",
+        ]
     )
     
     # 3. 三个并行审查节点 → 合并节点 (LangGraph 自动等待所有并行节点完成)
     subgraph.add_edge("code_quality_review", "merge_review_results")
     subgraph.add_edge("bdl_compliance_review", "merge_review_results")
     subgraph.add_edge("function_parity_review", "merge_review_results")
+    subgraph.add_edge("accessibility_review", "merge_review_results")
+    subgraph.add_edge("security_review", "merge_review_results")
+    subgraph.add_edge("editor_schema_review", "merge_review_results")
+    subgraph.add_edge("runtime_check_review", "merge_review_results")
     
     # 4. 合并节点 → 聚合决策
     subgraph.add_edge("merge_review_results", "aggregate_reviews")
@@ -237,6 +264,7 @@ def create_review_subgraph() -> StateGraph:
         review_decision_router,
         {
             "human_review": "prepare_human_review",
+            "auto_fix": "auto_fix",
             "auto_approve": "auto_approve",
             "regenerate": "handle_rejection"
         }
@@ -259,6 +287,7 @@ def create_review_subgraph() -> StateGraph:
     )
     
     # 8. 终止节点
+    subgraph.add_edge("auto_fix", "distribute_reviews")
     subgraph.add_edge("auto_approve", END)
     subgraph.add_edge("handle_rejection", END)
     subgraph.add_edge("apply_modifications", END)
@@ -275,23 +304,9 @@ def route_to_parallel_reviews(state: MigrationGraphState) -> List[Send]:
     2. 等待所有节点完成
     3. 使用 Reducer 合并各节点的状态更新
     """
-    # 检查是否有组件需要审查
-    components = state.get("components", {})
-    has_components_to_review = any(
-        comp_data.get("status") == "generating"
-        for comp_data in components.values()
-    )
-    
-    if not has_components_to_review:
-        # 没有组件需要审查，直接跳到合并节点
-        return [Send("merge_review_results", state)]
-    
-    # 返回三个 Send，LangGraph 会并行执行这三个节点
-    return [
-        Send("code_quality_review", state),
-        Send("bdl_compliance_review", state),
-        Send("function_parity_review", state),
-    ]
+    from src.nodes.pipeline.review import route_to_parallel_reviews as impl
+
+    return impl(state)
 
 
 # ============================================================================
@@ -517,6 +532,27 @@ async def function_parity_review_v2_node(state: MigrationGraphState) -> Dict[str
     from src.nodes.pipeline.review import function_parity_review_v2
     return await function_parity_review_v2(state)
 
+async def accessibility_review_v2_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """可访问性审查节点 (Send API 版本)"""
+    from src.nodes.pipeline.review import accessibility_review_v2
+    return await accessibility_review_v2(state)
+
+async def security_review_v2_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """安全审查节点 (Send API 版本)"""
+    from src.nodes.pipeline.review import security_review_v2
+    return await security_review_v2(state)
+
+async def editor_schema_review_v2_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """编辑器 Schema 审查节点 (Send API 版本)"""
+    from src.nodes.pipeline.review import editor_schema_review_v2
+    return await editor_schema_review_v2(state)
+
+
+async def runtime_check_review_v2_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """运行检查节点 (Send API 版本)"""
+    from src.nodes.pipeline.review import runtime_check_review_v2
+    return await runtime_check_review_v2(state)
+
 
 def merge_review_results_node(state: MigrationGraphState) -> Dict[str, Any]:
     """合并审查结果节点 - Fan-in 终点"""
@@ -554,6 +590,11 @@ def auto_approve_node(state: MigrationGraphState) -> Dict[str, Any]:
     return auto_approve(state)
 
 
+
+async def auto_fix_node(state: MigrationGraphState) -> Dict[str, Any]:
+    """Auto fix"""
+    from src.nodes.intelligent.code_fix import code_fix_node
+    return await code_fix_node(state)
 def handle_rejection_node(state: MigrationGraphState) -> Dict[str, Any]:
     """处理拒绝"""
     from src.nodes.pipeline.review import handle_rejection

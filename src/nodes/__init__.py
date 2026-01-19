@@ -58,6 +58,10 @@ from src.nodes.pipeline.review import (
     code_quality_review_v2,
     bdl_compliance_review_v2,
     function_parity_review_v2,
+    accessibility_review_v2,
+    security_review_v2,
+    editor_schema_review_v2,
+    runtime_check_review_v2,
     merge_review_results_node,
     aggregate_reviews,
     prepare_human_review,
@@ -84,6 +88,7 @@ from src.nodes.pipeline.finalization import (
 # ============================================================================
 
 from src.nodes.intelligent.bdl_mapping import bdl_mapping_node
+from src.nodes.intelligent.code_fix import code_fix_node
 from src.nodes.intelligent.code_generation import code_generation_node
 from src.nodes.intelligent.code_review import code_review_node
 from src.nodes.intelligent.editor_design import editor_design_node
@@ -121,6 +126,10 @@ __all__ = [
     "code_quality_review_v2",
     "bdl_compliance_review_v2",
     "function_parity_review_v2",
+    "accessibility_review_v2",
+    "security_review_v2",
+    "editor_schema_review_v2",
+    "runtime_check_review_v2",
     "merge_review_results_node",
     "aggregate_reviews",
     "prepare_human_review",
@@ -138,6 +147,7 @@ __all__ = [
     
     # ========== Intelligent 节点 ==========
     "bdl_mapping_node",
+    "code_fix_node",
     "code_generation_node",
     "code_review_node",
     "editor_design_node",

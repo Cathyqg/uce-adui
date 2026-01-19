@@ -4,7 +4,9 @@
 
 从 src/agents/code_reviewer.py 重构而来
 """
-from typing import Any, Dict
+from datetime import datetime
+from typing import Any, Dict, Optional
+from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
 
@@ -49,6 +51,52 @@ def _create_code_reviewer():
 # ============================================================================
 # 节点实现
 # ============================================================================
+
+def _normalize_issue(issue: Any, category: str) -> Dict[str, Any]:
+    if isinstance(issue, str):
+        data = {"title": issue}
+    elif isinstance(issue, dict):
+        data = dict(issue)
+    else:
+        model_dump = getattr(issue, "model_dump", None)
+        if callable(model_dump):
+            data = model_dump()
+        else:
+            return {}
+    return {
+        "issue_id": data.get("issue_id", str(uuid4())),
+        "category": data.get("category", category),
+        "severity": data.get("severity", "minor"),
+        "title": data.get("title", ""),
+        "description": data.get("description", ""),
+        "location": data.get("location", ""),
+        "suggestion": data.get("suggestion", ""),
+        "auto_fixable": bool(data.get("auto_fixable", False)),
+    }
+
+
+def _build_review_result(
+    reviewer: str,
+    score: int,
+    passed: bool,
+    issues: list[dict],
+    metrics: Optional[Dict[str, Any]] = None,
+    summary: str = "",
+    reviewer_type: str = "agent",
+    strategy: str = "agent",
+) -> Dict[str, Any]:
+    return {
+        "reviewer": reviewer,
+        "reviewer_type": reviewer_type,
+        "strategy": strategy,
+        "score": score,
+        "passed": passed,
+        "issues": issues,
+        "metrics": metrics or {},
+        "summary": summary,
+        "timestamp": datetime.now().isoformat(),
+    }
+
 
 async def code_review_node(state: MigrationGraphState) -> Dict[str, Any]:
     """
@@ -102,26 +150,39 @@ Use tools to validate syntax, linting, and BDL compliance. Provide comprehensive
             review_output: CodeReviewOutput = result.get("structured_response")
             
             if review_output:
-                results[comp_id] = {
-                    "code_quality": {
-                        "reviewer": "intelligent_reviewer",
-                        "score": review_output.overall_score,
-                        "passed": review_output.decision == "APPROVE",
-                        "issues": [i.model_dump() for i in review_output.issues],
-                        "decision": review_output.decision,
-                        "summary": review_output.summary,
-                        "node_type": "intelligent"
-                    }
-                }
+                issues = []
+                for issue in review_output.issues:
+                    normalized = _normalize_issue(issue, "code_quality")
+                    if normalized:
+                        issues.append(normalized)
+
+                review_result = _build_review_result(
+                    reviewer="code_quality",
+                    score=review_output.overall_score,
+                    passed=review_output.decision == "APPROVE",
+                    issues=issues,
+                    metrics=review_output.tool_validation_results,
+                    summary=review_output.summary,
+                    reviewer_type="agent",
+                    strategy="agent",
+                )
+                review_result["decision"] = review_output.decision
+                results[comp_id] = {"code_quality": review_result}
             
         except Exception as e:
             error = create_error_result(e, comp_id, "code_review_node")
-            results[comp_id] = {
-                "code_quality": {
-                    "score": 0,
-                    "passed": False,
-                    "error": error["error"]["message"]
-                }
-            }
+            error_message = error["error"]["message"]
+            review_result = _build_review_result(
+                reviewer="code_quality",
+                score=0,
+                passed=False,
+                issues=[],
+                metrics={},
+                summary=f"error: {error_message}",
+                reviewer_type="agent",
+                strategy="agent",
+            )
+            review_result["error"] = error_message
+            results[comp_id] = {"code_quality": review_result}
     
     return {"parallel_review_results": results}

@@ -14,6 +14,7 @@ Intelligent 节点模块
 """
 
 from src.nodes.intelligent.bdl_mapping import bdl_mapping_node
+from src.nodes.intelligent.code_fix import code_fix_node
 from src.nodes.intelligent.code_generation import code_generation_node
 from src.nodes.intelligent.code_review import code_review_node
 from src.nodes.intelligent.editor_design import editor_design_node
@@ -21,6 +22,7 @@ from src.nodes.intelligent.editor_design import editor_design_node
 
 __all__ = [
     "bdl_mapping_node",
+    "code_fix_node",
     "code_generation_node",
     "code_review_node",
     "editor_design_node",
