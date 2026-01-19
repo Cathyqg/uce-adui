@@ -58,6 +58,8 @@ async def code_generation_node(state: MigrationGraphState) -> Dict[str, Any]:
     """
     components = state.get("components", {})
     updated_components = dict(components)
+    component_registry = dict(state.get("component_registry", {}))
+    stats = dict(state.get("stats", {}))
     
     agent = _create_code_generator()
     
@@ -99,9 +101,10 @@ CSS: {transformed.get('css_module', '')}"""
             code_output: CodeGeneratorOutput = result.get("structured_response")
             
             if code_output:
+                component_name = _to_pascal_case(comp_id)
                 updated_components[comp_id]["react_component"] = {
                     "component_id": comp_id,
-                    "component_name": _to_pascal_case(comp_id),
+                    "component_name": component_name,
                     "component_code": code_output.component_code,
                     "styles_code": code_output.styles_code,
                     "index_code": code_output.index_code or _generate_index(comp_id),
@@ -111,13 +114,23 @@ CSS: {transformed.get('css_module', '')}"""
                 }
                 updated_components[comp_id]["status"] = "generating"
                 updated_components[comp_id]["node_type"] = "intelligent"
+
+                resource_type = comp_data.get("aem_component", {}).get("resource_type", "")
+                if resource_type:
+                    component_registry[resource_type] = component_name
+
+                stats["generated_components"] = stats.get("generated_components", 0) + 1
             
         except Exception as e:
             error = create_error_result(e, comp_id, "code_generation_node")
             updated_components[comp_id]["errors"].append(error["error"])
             updated_components[comp_id]["status"] = "failed"
     
-    return {"components": updated_components}
+    return {
+        "components": updated_components,
+        "component_registry": component_registry,
+        "stats": stats,
+    }
 
 
 # ============================================================================

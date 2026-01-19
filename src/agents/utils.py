@@ -132,7 +132,8 @@ def create_structured_agent(
 
             async def ainvoke(self, input_dict: Dict[str, Any]):
                 if getattr(self, "_response_format", None):
-                    content = build_placeholder_model(self._response_format)
+                    model = build_placeholder_model(self._response_format)
+                    content = model.model_dump_json()
                 else:
                     content = "{}"
                 return {"messages": [AIMessage(content=content)]}

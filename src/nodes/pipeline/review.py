@@ -32,6 +32,7 @@ import asyncio
 import json
 import re
 from datetime import datetime
+import os
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 from uuid import uuid4
@@ -89,6 +90,18 @@ def with_retry(
             raise last_exception
         return wrapper
     return decorator
+
+
+# ============================================================================
+# Review Skip Helper
+# ============================================================================
+
+def _should_skip_review(state: MigrationGraphState) -> bool:
+    """Return True when review should be bypassed."""
+    config = state.get("config", {})
+    if config.get("auto_approve_all"):
+        return True
+    return os.getenv("MIGRATION_SKIP_REVIEW", "").lower() in {"1", "true", "yes"}
 
 
 # ============================================================================
@@ -768,14 +781,36 @@ def auto_approve(state: MigrationGraphState) -> Dict[str, Any]:
     components = state.get("components", {})
     updated_components = dict(components)
     stats = dict(state.get("stats", {}))
+    skip_review = _should_skip_review(state)
     
     for comp_id, comp_data in components.items():
+        if skip_review:
+            if comp_data.get("status") == "failed":
+                continue
+            if not comp_data.get("react_component"):
+                continue
+            if comp_data.get("status") != "approved":
+                updated_components[comp_id]["status"] = "approved"
+                stats["approved_components"] = stats.get("approved_components", 0) + 1
+            review = updated_components[comp_id].setdefault("review", {})
+            review.setdefault("aggregated", {
+                "overall_score": 100.0,
+                "auto_approved": True,
+                "requires_human_review": False,
+                "total_issues": 0,
+                "critical_issues": 0,
+                "timestamp": datetime.now().isoformat(),
+                "skipped_review": True
+            })
+            continue
+
         review = comp_data.get("review", {})
         aggregated = review.get("aggregated", {})
         
         if aggregated.get("auto_approved"):
-            updated_components[comp_id]["status"] = "approved"
-            stats["approved_components"] = stats.get("approved_components", 0) + 1
+            if comp_data.get("status") != "approved":
+                updated_components[comp_id]["status"] = "approved"
+                stats["approved_components"] = stats.get("approved_components", 0) + 1
     
     return {
         "components": updated_components,
@@ -1052,6 +1087,9 @@ def route_to_parallel_reviews(state: MigrationGraphState) -> List:
     # 导入放在函数内部避免循环导入
     from langgraph.constants import Send
     
+    if _should_skip_review(state):
+        return [Send("merge_review_results", state)]
+
     # 检查是否有组件需要审查
     components = state.get("components", {})
     has_components_to_review = any(

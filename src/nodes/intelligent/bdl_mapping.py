@@ -66,14 +66,24 @@ def _create_bdl_spec_summary(bdl_spec: Dict[str, Any]) -> str:
         
         # 提取 props 名称（不包括详细定义）
         props = comp_spec.get("props", {})
-        prop_names = list(props.keys())[:5]  # 只列出前5个
+        if isinstance(props, dict):
+            prop_names = list(props.keys())[:5]
+        elif isinstance(props, list):
+            prop_names = [str(p) for p in props][:5]
+        else:
+            prop_names = []
         props_summary = ", ".join(prop_names)
         if len(props) > 5:
             props_summary += f" ... (+{len(props) - 5} more)"
         
         # 提取 variants 名称
         variants = comp_spec.get("variants", {})
-        variant_names = list(variants.keys())[:3]  # 只列出前3个
+        if isinstance(variants, dict):
+            variant_names = list(variants.keys())[:3]
+        elif isinstance(variants, list):
+            variant_names = [str(v) for v in variants][:3]
+        else:
+            variant_names = []
         variants_summary = ", ".join(variant_names) if variant_names else "none"
         
         summary_parts.append(
